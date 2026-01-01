@@ -74,8 +74,7 @@ type DownloadResponse struct {
 
 // Spotify OAuth helpers
 func (a *App) StartSpotifyLogin() (backend.SpotifyLoginResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Minute)
 	return backend.StartSpotifyLogin(ctx)
 }
 

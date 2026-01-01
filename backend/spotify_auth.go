@@ -141,17 +141,18 @@ func (m *spotifyAuthManager) startLogin(ctx context.Context) (SpotifyLoginRespon
 		m.server = nil
 	}
 
-	// Prefer fixed callback host:port for easier whitelist; fall back to random port if busy
 	ln, err := net.Listen("tcp", defaultCallbackHost)
 	if err != nil {
-		ln, err = net.Listen("tcp", "127.0.0.1:0")
-	}
-	if err != nil {
-		return SpotifyLoginResponse{}, fmt.Errorf("failed to open callback listener: %w", err)
+		return SpotifyLoginResponse{}, fmt.Errorf("failed to open callback listener on %s: %w", defaultCallbackHost, err)
 	}
 
-	port := ln.Addr().(*net.TCPAddr).Port
-	m.redirect = fmt.Sprintf("http://127.0.0.1:%d/callback", port)
+	clientID := spotifyClientID()
+	if clientID == "" {
+		ln.Close()
+		return SpotifyLoginResponse{}, errors.New("spotify client id is not configured")
+	}
+
+	m.redirect = fmt.Sprintf("http://%s/callback", defaultCallbackHost)
 
 	verifier, err := generateCodeVerifier()
 	if err != nil {
@@ -175,7 +176,9 @@ func (m *spotifyAuthManager) startLogin(ctx context.Context) (SpotifyLoginRespon
 	m.loginWait = make(chan error, 1)
 
 	go func() {
-		_ = srv.Serve(ln)
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			fmt.Printf("[spotify-auth] callback server error: %v\n", err)
+		}
 	}()
 
 	// Background watcher to stop server once context ends.
@@ -190,6 +193,7 @@ func (m *spotifyAuthManager) startLogin(ctx context.Context) (SpotifyLoginRespon
 func (m *spotifyAuthManager) handleCallback(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	fmt.Printf("[spotify-auth] received callback: %s\n", r.URL.String())
 
 	// Stop server after handling to avoid port leaking.
 	defer func() {
@@ -730,24 +734,23 @@ func convertTrackToAlbumTrack(track trackFull) AlbumTrackMetadata {
 }
 
 func exchangeCodeForToken(code, redirectURI, verifier string) (*spotifyTokenStore, error) {
+	clientID := spotifyClientID()
+	if clientID == "" {
+		return nil, errors.New("spotify client id is not configured")
+	}
+
 	data := url.Values{}
 	data.Set("grant_type", "authorization_code")
 	data.Set("code", code)
 	data.Set("redirect_uri", redirectURI)
 	data.Set("code_verifier", verifier)
+	data.Set("client_id", clientID)
 
 	req, err := http.NewRequest(http.MethodPost, spotifyTokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, err
 	}
 
-	// Set Basic Auth header with client credentials
-	clientID := spotifyClientID()
-	clientSecret := spotifyClientSecret()
-	if clientID == "" || clientSecret == "" {
-		return nil, errors.New("missing spotify client credentials")
-	}
-	req.SetBasicAuth(clientID, clientSecret)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -782,22 +785,21 @@ func exchangeCodeForToken(code, redirectURI, verifier string) (*spotifyTokenStor
 }
 
 func refreshAccessToken(refreshToken string) (*spotifyTokenStore, error) {
+	clientID := spotifyClientID()
+	if clientID == "" {
+		return nil, errors.New("spotify client id is not configured")
+	}
+
 	data := url.Values{}
 	data.Set("grant_type", "refresh_token")
 	data.Set("refresh_token", refreshToken)
+	data.Set("client_id", clientID)
 
 	req, err := http.NewRequest(http.MethodPost, spotifyTokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, err
 	}
 
-	// Set Basic Auth header with client credentials
-	clientID := spotifyClientID()
-	clientSecret := spotifyClientSecret()
-	if clientID == "" || clientSecret == "" {
-		return nil, errors.New("missing spotify client credentials")
-	}
-	req.SetBasicAuth(clientID, clientSecret)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -876,109 +878,8 @@ func spotifyTokenPath() (string, error) {
 
 // spotifyClientID returns the decoded client ID string.
 func spotifyClientID() string {
-	if custom, err := GetSpotifyClientID(); err == nil && custom != "" {
-		return custom
-	}
-	if decoded, err := base64.StdEncoding.DecodeString("NWY1NzNjOTYyMDQ5NGJhZTg3ODkwYzBmMDhhNjAyOTM="); err == nil {
+	if decoded, err := base64.StdEncoding.DecodeString("MjM1ZDZiMTk3MDc5NGI5MmIzOWMwMDg0NTFmNWVjNWI="); err == nil {
 		return string(decoded)
 	}
 	return ""
-}
-
-// GetSpotifyClientID returns custom client ID if set, otherwise empty string.
-func GetSpotifyClientID() (string, error) {
-	path, err := spotifyClientIDPath()
-	if err != nil {
-		return "", err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", nil
-		}
-		return "", err
-	}
-	return strings.TrimSpace(string(data)), nil
-}
-
-// SetSpotifyClientID persists a custom Spotify client ID (empty clears it).
-func SetSpotifyClientID(id string) error {
-	id = strings.TrimSpace(id)
-	path, err := spotifyClientIDPath()
-	if err != nil {
-		return err
-	}
-	if id == "" {
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, []byte(id), 0600)
-}
-
-func spotifyClientIDPath() (string, error) {
-	dir, err := getSpotiDownloaderDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "spotify_client_id"), nil
-}
-
-// spotifyClientSecret returns the decoded client secret string.
-func spotifyClientSecret() string {
-	if custom, err := GetSpotifyClientSecret(); err == nil && custom != "" {
-		return custom
-	}
-	// Fallback to hardcoded client secret (same as in spotify_metadata.go)
-	if decoded, err := base64.StdEncoding.DecodeString("MjEyNDc2ZDliMGYzNDcyZWFhNzYyZDkwYjE5YjBiYTg="); err == nil {
-		return string(decoded)
-	}
-	return ""
-}
-
-// GetSpotifyClientSecret returns custom client secret if set, otherwise empty string.
-func GetSpotifyClientSecret() (string, error) {
-	path, err := spotifyClientSecretPath()
-	if err != nil {
-		return "", err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", nil
-		}
-		return "", err
-	}
-	return strings.TrimSpace(string(data)), nil
-}
-
-// SetSpotifyClientSecret persists a custom Spotify client secret (empty clears it).
-func SetSpotifyClientSecret(secret string) error {
-	secret = strings.TrimSpace(secret)
-	path, err := spotifyClientSecretPath()
-	if err != nil {
-		return err
-	}
-	if secret == "" {
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, []byte(secret), 0600)
-}
-
-func spotifyClientSecretPath() (string, error) {
-	dir, err := getSpotiDownloaderDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "spotify_client_secret"), nil
 }
