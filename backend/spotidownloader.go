@@ -163,6 +163,10 @@ func (s *SpotiDownloader) DownloadFile(downloadURL, outputPath string) error {
 
 	req.Header.Set("Referer", "https://spotidownloader.com/")
 	req.Header.Set("Origin", "https://spotidownloader.com")
+	// Some download links require the same bearer token used for the API calls.
+	if s.sessionToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.sessionToken)
+	}
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -171,7 +175,9 @@ func (s *SpotiDownloader) DownloadFile(downloadURL, outputPath string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download file: status %d", resp.StatusCode)
+		// Read a small portion of the body to surface server error details without buffering the whole file
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("failed to download file: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	// Create output directory if it doesn't exist
