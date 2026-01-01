@@ -110,6 +110,33 @@ export type SpotifyMetadataResponse =
   | ArtistDiscographyResponse
   | ArtistResponse;
 
+export interface SpotifyAuthStatus {
+  authenticated: boolean;
+  display_name?: string;
+  user_id?: string;
+  avatar_url?: string;
+  expires_at?: number;
+  scope?: string;
+}
+
+export interface SpotifyLoginResponse {
+  url: string;
+}
+
+export interface PlaylistSummary {
+  id: string;
+  name: string;
+  owner: string;
+  tracks_total: number;
+  image_url?: string;
+  is_public: boolean;
+}
+
+export interface PlaylistWithTracks {
+  playlist: PlaylistSummary;
+  tracks: TrackMetadata[];
+}
+
 export interface DownloadRequest {
   isrc: string;
   track_id?: string;

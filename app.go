@@ -72,6 +72,41 @@ type DownloadResponse struct {
 	ItemID        string `json:"item_id,omitempty"` // Queue item ID for tracking
 }
 
+// Spotify OAuth helpers
+func (a *App) StartSpotifyLogin() (backend.SpotifyLoginResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return backend.StartSpotifyLogin(ctx)
+}
+
+func (a *App) GetSpotifyAuthStatus() (backend.SpotifyAuthStatus, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return backend.GetSpotifyAuthStatus(ctx)
+}
+
+func (a *App) LogoutSpotifyAccount() error {
+	return backend.LogoutSpotify()
+}
+
+func (a *App) GetSpotifyPlaylists() ([]backend.PlaylistSummary, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	return backend.FetchUserPlaylists(ctx)
+}
+
+func (a *App) GetSpotifySavedTracks() ([]backend.AlbumTrackMetadata, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	return backend.FetchUserSavedTracks(ctx)
+}
+
+func (a *App) GetSpotifyPlaylistTracks(playlistID string) (*backend.PlaylistWithTracks, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	return backend.FetchUserPlaylistTracks(ctx, playlistID)
+}
+
 // GetSpotifyMetadata fetches metadata from Spotify
 func (a *App) GetSpotifyMetadata(req SpotifyMetadataRequest) (string, error) {
 	if req.URL == "" {
@@ -715,7 +750,7 @@ func (a *App) ReadImageAsBase64(filePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	ext := strings.ToLower(filepath.Ext(filePath))
 	var mimeType string
 	switch ext {
@@ -730,7 +765,7 @@ func (a *App) ReadImageAsBase64(filePath string) (string, error) {
 	default:
 		mimeType = "image/jpeg"
 	}
-	
+
 	encoded := base64.StdEncoding.EncodeToString(content)
 	return fmt.Sprintf("data:%s;base64,%s", mimeType, encoded), nil
 }

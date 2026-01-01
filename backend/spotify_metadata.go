@@ -218,8 +218,9 @@ type externalID struct {
 }
 
 type artist struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	ExternalURL externalURL `json:"external_urls"`
 }
 
 type albumSimplified struct {

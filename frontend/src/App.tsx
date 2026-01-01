@@ -32,6 +32,7 @@ import { AudioConverterPage } from "@/components/AudioConverterPage";
 import { FileManagerPage } from "@/components/FileManagerPage";
 import { SettingsPage } from "@/components/SettingsPage";
 import { DebugLoggerPage } from "@/components/DebugLoggerPage";
+import { SpotifyAccountPage } from "@/components/SpotifyAccountPage";
 import type { HistoryItem } from "@/components/FetchHistory";
 
 // Hooks
@@ -40,6 +41,7 @@ import { useMetadata } from "@/hooks/useMetadata";
 import { useLyrics } from "@/hooks/useLyrics";
 import { useCover } from "@/hooks/useCover";
 import { useDownloadQueueDialog } from "@/hooks/useDownloadQueueDialog";
+import { useSpotifyAccount } from "@/hooks/useSpotifyAccount";
 
 const HISTORY_KEY = "spotidownloader_fetch_history";
 const MAX_HISTORY = 5;
@@ -65,6 +67,7 @@ function App() {
   const lyrics = useLyrics();
   const cover = useCover();
   const downloadQueue = useDownloadQueueDialog();
+  const spotify = useSpotifyAccount();
 
 
   useEffect(() => {
@@ -531,6 +534,19 @@ function App() {
         return <AudioConverterPage />;
       case "file-manager":
         return <FileManagerPage />;
+      case "spotify-account":
+        return (
+          <SpotifyAccountPage
+            download={{
+              handleDownloadAll: download.handleDownloadAll,
+              isDownloading: download.isDownloading,
+              downloadProgress: download.downloadProgress,
+              downloadingTrack: download.downloadingTrack,
+              currentDownloadInfo: download.currentDownloadInfo,
+            }}
+            spotify={spotify}
+          />
+        );
       default:
         return (
           <>
@@ -668,7 +684,6 @@ function App() {
       <div className="min-h-screen bg-background flex flex-col">
         <TitleBar />
         <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
-        
         {/* Main content area with sidebar offset */}
         <div className="flex-1 ml-14 mt-10 p-4 md:p-8">
           <div className="max-w-4xl mx-auto space-y-6">

@@ -1,4 +1,4 @@
-import { FileMusic, FilePen } from "lucide-react";
+import { FileMusic, FilePen, Library } from "lucide-react";
 import { HomeIcon } from "@/components/ui/home";
 import { SettingsIcon } from "@/components/ui/settings";
 import { ActivityIcon } from "@/components/ui/activity";
@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { openExternal } from "@/lib/utils";
 
-export type PageType = "main" | "settings" | "debug" | "audio-analysis" | "audio-converter" | "file-manager";
+export type PageType = "main" | "settings" | "debug" | "audio-analysis" | "audio-converter" | "file-manager" | "spotify-account";
 
 interface SidebarProps {
   currentPage: PageType;
@@ -39,6 +39,23 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
           </TooltipTrigger>
           <TooltipContent side="right">
             <p>Home</p>
+          </TooltipContent>
+        </Tooltip>
+
+        {/* Spotify Account */}
+        <Tooltip delayDuration={0}>
+          <TooltipTrigger asChild>
+            <Button
+              variant={currentPage === "spotify-account" ? "secondary" : "ghost"}
+              size="icon"
+              className="h-10 w-10"
+              onClick={() => onPageChange("spotify-account")}
+            >
+              <Library className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <p>Spotify Library</p>
           </TooltipContent>
         </Tooltip>
 
@@ -127,7 +144,7 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
           </TooltipContent>
         </Tooltip>
       </div>
-      
+
       {/* Bottom icons */}
       <div className="mt-auto flex flex-col gap-2">
         <Tooltip delayDuration={0}>
