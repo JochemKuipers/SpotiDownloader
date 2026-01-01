@@ -540,9 +540,13 @@ function App() {
             download={{
               handleDownloadAll: download.handleDownloadAll,
               isDownloading: download.isDownloading,
+              isPaused: download.isPaused,
               downloadProgress: download.downloadProgress,
               downloadingTrack: download.downloadingTrack,
               currentDownloadInfo: download.currentDownloadInfo,
+              handleStopDownload: download.handleStopDownload,
+              handlePauseDownload: download.handlePauseDownload,
+              handleResumeDownload: download.handleResumeDownload,
             }}
             spotify={spotify}
           />
@@ -561,7 +565,7 @@ function App() {
               open={metadata.showTimeoutDialog}
               onOpenChange={metadata.setShowTimeoutDialog}
             >
-              <DialogContent className="sm:max-w-[425px] p-6 [&>button]:hidden">
+              <DialogContent className="sm:max-w-106.25 p-6 [&>button]:hidden">
                 <div className="absolute right-4 top-4">
                   <Button
                     variant="ghost"
@@ -616,7 +620,7 @@ function App() {
 
             {/* Album Fetch Dialog */}
             <Dialog open={metadata.showAlbumDialog} onOpenChange={metadata.setShowAlbumDialog}>
-              <DialogContent className="sm:max-w-[425px] p-6 [&>button]:hidden">
+              <DialogContent className="sm:max-w-106.25 p-6 [&>button]:hidden">
                 <div className="absolute right-4 top-4">
                   <Button
                     variant="ghost"

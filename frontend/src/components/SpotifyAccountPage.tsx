@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { DownloadIcon, LibraryIcon, Loader2, LogOut, Music, RefreshCw, UserRound } from "lucide-react";
+import { DownloadIcon, LibraryIcon, Loader2, LogOut, Music, Pause, Play, RefreshCw, Square, UserRound } from "lucide-react";
 import { useSpotifyAccount } from "@/hooks/useSpotifyAccount";
 import type { TrackMetadata, PlaylistSummary } from "@/types/api";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
@@ -11,9 +11,13 @@ import { toastWithSound as toast } from "@/lib/toast-with-sound";
 interface DownloadApi {
     handleDownloadAll: (tracks: TrackMetadata[], playlistName?: string, isAlbum?: boolean) => Promise<void>;
     isDownloading: boolean;
+    isPaused: boolean;
     downloadProgress: number;
     downloadingTrack: string | null;
     currentDownloadInfo: { name: string; artists: string } | null;
+    handleStopDownload: () => void;
+    handlePauseDownload: () => void;
+    handleResumeDownload: () => void;
 }
 
 interface SpotifyAccountPageProps {
@@ -37,6 +41,7 @@ export function SpotifyAccountPage({ download, spotify }: SpotifyAccountPageProp
 
     const [downloadingLiked, setDownloadingLiked] = useState(false);
     const [downloadingPlaylists, setDownloadingPlaylists] = useState(false);
+    const [downloadingPlaylistId, setDownloadingPlaylistId] = useState<string | null>(null);
 
     const summary = useMemo(() => {
         const totalTracksInPlaylists = playlists.reduce((acc, p) => acc + (p.tracks_total || 0), 0);
@@ -68,14 +73,24 @@ export function SpotifyAccountPage({ download, spotify }: SpotifyAccountPageProp
         setDownloadingPlaylists(true);
         try {
             for (const playlist of playlists) {
-                const data = await fetchPlaylistTracks(playlist.id);
-                if (!data || !data.tracks?.length) {
-                    continue;
-                }
-                await download.handleDownloadAll(data.tracks, playlist.name, false);
+                await handleDownloadSinglePlaylist(playlist);
             }
         } finally {
             setDownloadingPlaylists(false);
+        }
+    };
+
+    const handleDownloadSinglePlaylist = async (playlist: PlaylistSummary) => {
+        setDownloadingPlaylistId(playlist.id);
+        try {
+            const data = await fetchPlaylistTracks(playlist.id);
+            if (!data || !data.tracks?.length) {
+                toast.error(`No tracks found for ${playlist.name}`);
+                return;
+            }
+            await download.handleDownloadAll(data.tracks, playlist.name, false);
+        } finally {
+            setDownloadingPlaylistId(null);
         }
     };
 
@@ -211,6 +226,26 @@ export function SpotifyAccountPage({ download, spotify }: SpotifyAccountPageProp
                             {downloadingPlaylists ? <Loader2 className="h-4 w-4 animate-spin" /> : <LibraryIcon className="h-4 w-4" />}
                             Download All Playlists
                         </Button>
+                        <div className="flex gap-2">
+                            <Button
+                                variant="outline"
+                                className="flex-1 gap-2"
+                                onClick={download.isPaused ? download.handleResumeDownload : download.handlePauseDownload}
+                                disabled={!download.isDownloading}
+                            >
+                                {download.isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+                                {download.isPaused ? "Resume" : "Pause"}
+                            </Button>
+                            <Button
+                                variant="destructive"
+                                className="flex-1 gap-2"
+                                onClick={download.handleStopDownload}
+                                disabled={!download.isDownloading}
+                            >
+                                <Square className="h-4 w-4" />
+                                Stop
+                            </Button>
+                        </div>
                         <p className="text-xs text-muted-foreground">
                             Downloads run sequentially to avoid hitting Spotify rate limits.
                         </p>
@@ -232,7 +267,23 @@ export function SpotifyAccountPage({ download, spotify }: SpotifyAccountPageProp
                                         {p.tracks_total} tracks • {p.owner || "You"}
                                     </div>
                                 </div>
-                                <Badge variant={p.is_public ? "outline" : "secondary"}>{p.is_public ? "Public" : "Private"}</Badge>
+                                <div className="flex items-center gap-2">
+                                    <Badge variant={p.is_public ? "outline" : "secondary"}>{p.is_public ? "Public" : "Private"}</Badge>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="gap-2"
+                                        onClick={() => handleDownloadSinglePlaylist(p)}
+                                        disabled={download.isDownloading || downloadingPlaylistId === p.id}
+                                    >
+                                        {downloadingPlaylistId === p.id ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <DownloadIcon className="h-4 w-4" />
+                                        )}
+                                        Download
+                                    </Button>
+                                </div>
                             </div>
                         ))}
                     </CardContent>

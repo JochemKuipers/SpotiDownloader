@@ -31,6 +31,7 @@ const SkipDownloadItem = (itemID: string, filePath: string): Promise<void> =>
 export function useDownload() {
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [downloadingTrack, setDownloadingTrack] = useState<string | null>(null);
   const [bulkDownloadType, setBulkDownloadType] = useState<"all" | "selected" | null>(null);
   const [downloadedTracks, setDownloadedTracks] = useState<Set<string>>(new Set());
@@ -41,6 +42,13 @@ export function useDownload() {
     artists: string;
   } | null>(null);
   const shouldStopDownloadRef = useRef(false);
+  const isPausedRef = useRef(false);
+
+  const waitIfPaused = async () => {
+    while (isPausedRef.current && !shouldStopDownloadRef.current) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  };
 
   const downloadWithSpotiDownloader = async (
     track: TrackMetadata,
@@ -196,6 +204,10 @@ export function useDownload() {
       return;
     }
 
+    shouldStopDownloadRef.current = false;
+    isPausedRef.current = false;
+    setIsPaused(false);
+
     logger.info(`starting batch download: ${selectedTracks.length} selected tracks`);
     const settings = getSettings();
     setIsDownloading(true);
@@ -259,6 +271,8 @@ export function useDownload() {
     setDownloadProgress(Math.round((skippedCount / total) * 100));
 
     for (let i = 0; i < tracksToDownload.length; i++) {
+      await waitIfPaused();
+
       if (shouldStopDownloadRef.current) {
         toast.info(`Download stopped. ${successCount} tracks downloaded, ${tracksToDownload.length - i} remaining.`);
         break;
@@ -310,6 +324,8 @@ export function useDownload() {
     setIsDownloading(false);
     setBulkDownloadType(null);
     shouldStopDownloadRef.current = false;
+    isPausedRef.current = false;
+    setIsPaused(false);
 
     logger.info(`batch complete: ${successCount} downloaded, ${skippedCount} skipped, ${errorCount} failed`);
     if (errorCount === 0 && skippedCount === 0) {
@@ -338,6 +354,10 @@ export function useDownload() {
       toast.error("No tracks available for download");
       return;
     }
+
+    shouldStopDownloadRef.current = false;
+    isPausedRef.current = false;
+    setIsPaused(false);
 
     logger.info(`starting batch download: ${tracksWithIsrc.length} tracks`);
     const settings = getSettings();
@@ -398,6 +418,8 @@ export function useDownload() {
     setDownloadProgress(Math.round((skippedCount / total) * 100));
 
     for (let i = 0; i < tracksToDownload.length; i++) {
+      await waitIfPaused();
+
       if (shouldStopDownloadRef.current) {
         toast.info(`Download stopped. ${successCount} tracks downloaded, ${tracksToDownload.length - i} remaining.`);
         break;
@@ -448,6 +470,8 @@ export function useDownload() {
     setIsDownloading(false);
     setBulkDownloadType(null);
     shouldStopDownloadRef.current = false;
+    isPausedRef.current = false;
+    setIsPaused(false);
 
     logger.info(`batch complete: ${successCount} downloaded, ${skippedCount} skipped, ${errorCount} failed`);
     if (errorCount === 0 && skippedCount === 0) {
@@ -468,7 +492,23 @@ export function useDownload() {
   const handleStopDownload = () => {
     logger.info("download stopped by user");
     shouldStopDownloadRef.current = true;
+    isPausedRef.current = false;
+    setIsPaused(false);
     toast.info("Stopping download...");
+  };
+
+  const handlePauseDownload = () => {
+    if (!isDownloading) return;
+    isPausedRef.current = true;
+    setIsPaused(true);
+    toast.info("Download paused");
+  };
+
+  const handleResumeDownload = () => {
+    if (!isPausedRef.current) return;
+    isPausedRef.current = false;
+    setIsPaused(false);
+    toast.info("Resuming download...");
   };
 
   const resetDownloadedTracks = () => {
@@ -480,6 +520,7 @@ export function useDownload() {
   return {
     downloadProgress,
     isDownloading,
+    isPaused,
     downloadingTrack,
     bulkDownloadType,
     downloadedTracks,
@@ -490,6 +531,8 @@ export function useDownload() {
     handleDownloadSelected,
     handleDownloadAll,
     handleStopDownload,
+    handlePauseDownload,
+    handleResumeDownload,
     resetDownloadedTracks,
   };
 }
