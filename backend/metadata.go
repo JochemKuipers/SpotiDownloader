@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	id3v2 "github.com/bogem/id3v2/v2"
 	"github.com/go-flac/flacpicture"
@@ -434,62 +435,64 @@ func readISRCFromMp3(filePath string) (string, error) {
 	return "", nil // No ISRC found
 }
 
+const isrcIndexCacheTTL = 15 * time.Minute
+
+type isrcIndexCache struct {
+	mu          sync.Mutex
+	index       map[string]string
+	outputDir   string
+	audioFormat string
+	lastScan    time.Time
+	dirty       bool
+}
+
+var globalISRCIndex = isrcIndexCache{}
+
+// getOrBuildISRCIndex returns a cached ISRC index for the given output directory and format.
+// It avoids rescanning the library for each playlist while still refreshing periodically.
+func getOrBuildISRCIndex(outputDir string, audioFormat string) map[string]string {
+	globalISRCIndex.mu.Lock()
+	defer globalISRCIndex.mu.Unlock()
+
+	cleanDir := pathfilepath.Clean(outputDir)
+	sameDir := strings.EqualFold(globalISRCIndex.outputDir, cleanDir)
+	sameFormat := globalISRCIndex.audioFormat == audioFormat
+	fresh := time.Since(globalISRCIndex.lastScan) < isrcIndexCacheTTL
+
+	if globalISRCIndex.index != nil && sameDir && sameFormat && fresh && !globalISRCIndex.dirty {
+		return globalISRCIndex.index
+	}
+
+	index := buildISRCIndex(cleanDir, audioFormat)
+	globalISRCIndex.index = index
+	globalISRCIndex.outputDir = cleanDir
+	globalISRCIndex.audioFormat = audioFormat
+	globalISRCIndex.lastScan = time.Now()
+	globalISRCIndex.dirty = false
+
+	return index
+}
+
+// MarkISRCIndexDirty marks the in-memory ISRC index stale so it will be refreshed on next use.
+func MarkISRCIndexDirty(outputDir string, audioFormat string) {
+	globalISRCIndex.mu.Lock()
+	defer globalISRCIndex.mu.Unlock()
+
+	globalISRCIndex.outputDir = pathfilepath.Clean(outputDir)
+	globalISRCIndex.audioFormat = audioFormat
+	globalISRCIndex.dirty = true
+}
+
 // CheckISRCExists checks if a file with the given ISRC already exists in the directory
 func CheckISRCExists(outputDir string, targetISRC string, audioFormat string) (string, bool) {
 	if targetISRC == "" {
 		return "", false
 	}
 
-	// Read all audio files in directory
-	entries, err := os.ReadDir(outputDir)
-	if err != nil {
-		return "", false
-	}
+	index := getOrBuildISRCIndex(outputDir, audioFormat)
 
-	// Determine which extensions to check
-	var extensions []string
-	switch audioFormat {
-	case "flac":
-		extensions = []string{".flac"}
-	case "mp3":
-		extensions = []string{".mp3"}
-	default:
-		extensions = []string{".mp3", ".flac"}
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		filename := entry.Name()
-		ext := strings.ToLower(pathfilepath.Ext(filename))
-
-		// Check if extension matches
-		validExt := false
-		for _, validExtension := range extensions {
-			if ext == validExtension {
-				validExt = true
-				break
-			}
-		}
-
-		if !validExt {
-			continue
-		}
-
-		filePath := pathfilepath.Join(outputDir, filename)
-
-		// Read ISRC from file
-		isrc, err := ReadISRCFromFile(filePath)
-		if err != nil {
-			continue
-		}
-
-		// Compare ISRC (case-insensitive)
-		if isrc != "" && strings.EqualFold(isrc, targetISRC) {
-			return filePath, true
-		}
+	if filePath, exists := index[strings.ToUpper(targetISRC)]; exists {
+		return filePath, true
 	}
 
 	return "", false
@@ -735,7 +738,7 @@ func CheckFilesExistParallel(outputDir string, audioFormat string, tracks []stru
 	results := make([]FileExistenceResult, len(tracks))
 
 	// Build ISRC index from output directory (scan once)
-	isrcIndex := buildISRCIndex(outputDir, audioFormat)
+	isrcIndex := getOrBuildISRCIndex(outputDir, audioFormat)
 
 	// Check each track against the index (parallel)
 	var wg sync.WaitGroup
@@ -773,6 +776,14 @@ func CheckFilesExistParallel(outputDir string, audioFormat string, tracks []stru
 // buildISRCIndex scans a directory and builds a map of ISRC -> file path
 func buildISRCIndex(outputDir string, audioFormat string) map[string]string {
 	index := make(map[string]string)
+
+	if outputDir == "" {
+		return index
+	}
+
+	if _, err := os.Stat(outputDir); err != nil {
+		return index
+	}
 
 	// Determine which extensions to check
 	var extensions []string

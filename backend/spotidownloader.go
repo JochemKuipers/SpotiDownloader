@@ -310,6 +310,10 @@ func (s *SpotiDownloader) DownloadByISRC(
 		os.Remove(coverPath)
 	}
 
+	if isrc != "" {
+		MarkISRCIndexDirty(outputDir, audioFormat)
+	}
+
 	return outputPath, nil
 }
 
